@@ -2,7 +2,7 @@
 
 A modern **Khmer Unicode typing tutor** — progressive lessons from home-row consonants through subscripts, formal writing, and a timed capstone exam.
 
-Practice works offline in the browser. Progress is saved in `localStorage` (cloud sync with a KruMath account is planned later).
+Practice works offline in the browser. Progress is saved in `localStorage` and merged into your KruMath account when you are signed in.
 
 ## Features
 
@@ -10,7 +10,7 @@ Practice works offline in the browser. Progress is saved in `localStorage` (clou
 - Interactive typing surface with WPM / CPM, accuracy, and mistake tracking
 - On-screen Khmer keyboard + finger guidance
 - Soft typing feedback sounds (project-owned samples)
-- Soft-gated for [krumath.com](https://krumath.com): anyone can practice; signed-in-only actions can be added later
+- Hard-gated for [krumath.com](https://krumath.com): a valid, non-anonymous KruMath account is required
 
 ## Tech stack
 
@@ -24,7 +24,7 @@ Practice works offline in the browser. Progress is saved in `localStorage` (clou
 Requirements: Node.js 20+ and npm.
 
 ```sh
-git clone https://github.com/sokna492-km/khmer-type-master.git
+git clone https://github.com/krumath-org/khmer-type-master.git
 cd khmer-type-master
 npm install
 npm run dev
@@ -73,14 +73,17 @@ This app is designed as a **separate repo** mounted at:
 https://krumath.com/khmer-typing-master
 ```
 
-See [`KRUMATH_GAME_INTEGRATION.md`](KRUMATH_GAME_INTEGRATION.md) for the full pattern (soft gate, Cloudflare route, operator checklist). Do **not** edit the KruMath monorepo from this repository.
+See [`KRUMATH_GAME_INTEGRATION.md`](KRUMATH_GAME_INTEGRATION.md) for the full pattern (hard gate, Cloudflare route, operator checklist) and [`HANDOFF.md`](HANDOFF.md) for the handoff block. Do **not** edit the KruMath monorepo from this repository.
+
+Progress is stored per user in `public.khmer_typing_progress` on the shared KruMath Supabase project. Apply `supabase/migrations/0001_khmer_typing_progress.sql` once.
 
 ### Operator checklist (after deploy)
 
-1. Deploy Worker (`npm run deploy`) with Supabase env present at build time
-2. Cloudflare route: `krumath.com/khmer-typing-master*` → Worker `khmer-typing-master`
-3. Smoke-test assets under `/khmer-typing-master/assets/...`
-4. Maintainer (separate PR): add `/khmer-typing-master` to returnUrl allowlist + `/home` card
+1. Apply `supabase/migrations/0001_khmer_typing_progress.sql` to the shared Supabase project
+2. Deploy Worker (`npm run deploy`) with Supabase env present at build time
+3. Cloudflare route: `krumath.com/khmer-typing-master*` → Worker `khmer-typing-master`
+4. Smoke-test signed-out redirect, sign-in return, assets under `/khmer-typing-master/assets/...`, and logout
+5. Maintainer (separate PR): add `/khmer-typing-master` to returnUrl allowlist + `/home` card
 
 ## License
 

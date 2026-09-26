@@ -10,7 +10,7 @@ export function getKrumathCookieDomain(hostname: string | undefined | null): str
   if (!hostname) return undefined;
   const host = hostname.toLowerCase();
   if (host === "localhost" || host.endsWith(".localhost")) return undefined;
-  if (host.endsWith("krumath.com")) return ".krumath.com";
+  if (host === "krumath.com" || host.endsWith(".krumath.com")) return ".krumath.com";
   return undefined;
 }
 

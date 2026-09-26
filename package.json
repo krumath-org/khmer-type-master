@@ -5,7 +5,7 @@
   "description": "Khmer Unicode typing tutor with a 16-level curriculum, NiDA keyboard guide, and real-time WPM/accuracy feedback.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sokna492-km/khmer-type-master.git"
+    "url": "git+https://github.com/krumath-org/khmer-type-master.git"
   },
   "sideEffects": false,
   "type": "module",

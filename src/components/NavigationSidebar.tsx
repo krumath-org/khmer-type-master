@@ -3,15 +3,17 @@ import { CURRICULUM, khmerNumber, type Level, type Lesson } from "@/data/curricu
 import { levelCompletion, type ProgressMap, lessonKey } from "@/lib/progress";
 import { cn } from "@/lib/utils";
 import { Tip } from "@/components/ui/tooltip";
-import { GITHUB_REPO_URL, krumathPricingUrl } from "@/lib/krumathUrls";
+import { AccountMenu } from "@/components/AccountMenu";
+import { GITHUB_REPO_URL, krumathHomeUrl, krumathPricingUrl } from "@/lib/krumathUrls";
+import type { AuthUser } from "@/lib/authUser";
 import {
-  BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Github,
   Heart,
+  Home,
   Timer,
   X,
   Keyboard,
@@ -27,6 +29,11 @@ interface NavigationSidebarProps {
   onToggleCollapse?: () => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
+  /** Signed-in KruMath account, or null (only reachable in DEV under a hard gate). */
+  user: AuthUser | null;
+  signInHref: string;
+  onSignOut: () => void | Promise<void>;
+  signingOut?: boolean;
 }
 
 const EXPANDED_WIDTH = 280;
@@ -42,6 +49,10 @@ export function NavigationSidebar({
   onToggleCollapse,
   isMobileOpen = false,
   onCloseMobile,
+  user,
+  signInHref,
+  onSignOut,
+  signingOut = false,
 }: NavigationSidebarProps) {
   const [expandedLevels, setExpandedLevels] = useState<Record<number, boolean>>(() => {
     return currentLevelId ? { [currentLevelId]: true } : { 1: true };
@@ -58,7 +69,7 @@ export function NavigationSidebar({
     <div className="flex h-full flex-col bg-card border-r border-border text-foreground select-none">
       {/* Header */}
       <div className="p-3.5 border-b border-border/80 bg-card/70 flex items-center justify-between gap-2">
-        <Tip label="ទៅកាន់ទំព័រដើម">
+        <Tip label="ទិដ្ឋភាពរួម">
           <button
             onClick={onGoHome}
             className="flex items-center gap-2.5 text-left group transition-all duration-150 rounded-lg p-1 -m-1 hover:bg-secondary/60 cursor-pointer min-w-0"
@@ -241,21 +252,28 @@ export function NavigationSidebar({
         })}
       </div>
 
-      {/* Footer */}
+      {/* Footer — KruMath Home + account + optional links (spec sections 12-13) */}
       <div className="space-y-2 p-3 border-t border-border/80 bg-card/60">
-        <button
-          onClick={onGoHome}
-          className="w-full flex items-center justify-center gap-2 rounded-lg border border-border/80 bg-background/80 py-2.5 text-sm font-medium km text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150 cursor-pointer"
+        <AccountMenu
+          variant="sidebar"
+          user={user}
+          signInHref={signInHref}
+          onSignOut={onSignOut}
+          signingOut={signingOut}
+        />
+        <a
+          href={krumathHomeUrl()}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/80 bg-background/80 py-2.5 text-sm font-medium km text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
         >
-          <BookOpen className="size-4" />
+          <Home className="size-4" />
           <span>ទំព័រដើម</span>
-        </button>
+        </a>
         <div className="grid grid-cols-2 gap-2">
           <a
             href={krumathPricingUrl()}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-background/80 py-2 text-sm font-medium km text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-background/80 py-2 text-sm font-medium km text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
           >
             <Heart className="size-3.5 shrink-0" />
             <span>បរិច្ចាគ</span>
@@ -264,7 +282,7 @@ export function NavigationSidebar({
             href={GITHUB_REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-background/80 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150"
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-border/80 bg-background/80 py-2 text-sm font-medium text-muted-foreground transition-colors duration-150 hover:bg-secondary hover:text-foreground"
           >
             <Github className="size-3.5 shrink-0" />
             <span>GitHub</span>
@@ -276,11 +294,11 @@ export function NavigationSidebar({
 
   const collapsedRail = (
     <div className="flex h-full w-full flex-col items-center bg-card border-r border-border text-foreground select-none py-3 gap-3">
-      <Tip label="ទៅកាន់ទំព័រដើម" side="right">
+      <Tip label="ទិដ្ឋភាពរួម" side="right">
         <button
           onClick={onGoHome}
           className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform duration-150 hover:scale-105 cursor-pointer"
-          aria-label="ទំព័រដើម"
+          aria-label="ទិដ្ឋភាពរួម"
         >
           <Keyboard className="size-4.5" />
         </button>
@@ -344,14 +362,21 @@ export function NavigationSidebar({
           </a>
         </Tip>
         <Tip label="ទំព័រដើម" side="right">
-          <button
-            onClick={onGoHome}
-            className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-background text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-            aria-label="ទំព័រដើម"
+          <a
+            href={krumathHomeUrl()}
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-background text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            aria-label="ទំព័រដើម KruMath"
           >
-            <BookOpen className="size-4" />
-          </button>
+            <Home className="size-4" />
+          </a>
         </Tip>
+        <AccountMenu
+          variant="rail"
+          user={user}
+          signInHref={signInHref}
+          onSignOut={onSignOut}
+          signingOut={signingOut}
+        />
       </div>
     </div>
   );

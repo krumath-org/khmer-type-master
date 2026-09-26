@@ -1,19 +1,41 @@
 import { useEffect, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { CURRICULUM, type Level, type Lesson, findLevel } from "@/data/curriculum";
 import { useProgress } from "@/lib/progress";
+import { useAuth } from "@/lib/useAuth";
+import { getAuthState } from "@/lib/auth.functions";
 import { NavigationSidebar } from "@/components/NavigationSidebar";
 import { LearningPathView } from "@/components/LearningPathView";
 import { TypingPracticeScreen } from "@/components/TypingPracticeScreen";
-import { Keyboard, Menu, Github, Heart } from "lucide-react";
-import { GITHUB_REPO_URL, krumathPricingUrl } from "@/lib/krumathUrls";
+import { Keyboard, Menu } from "lucide-react";
+import { publicAppHref, publicAppPath, signInUrl } from "@/lib/krumathUrls";
 
 export const Route = createFileRoute("/")({
+  /**
+   * Hard gate (spec sections 7-9): reject missing and anonymous sessions before
+   * rendering. DEV skips the gate so localhost works without shared
+   * `.krumath.com` cookies; production behavior is unaffected.
+   */
+  beforeLoad: async ({ location }) => {
+    if (import.meta.env.DEV) {
+      return { authUser: null };
+    }
+
+    const state = await getAuthState();
+    if (!state.signedIn) {
+      // Preserve deep-link intent (e.g. ?level=3&lesson=...) across sign-in.
+      const returnPath = publicAppHref(location.pathname, location.searchStr);
+      throw redirect({ href: signInUrl(returnPath), reloadDocument: true });
+    }
+    return { authUser: state.user };
+  },
   component: Index,
 });
 
 function Index() {
-  const { progress, loaded, record } = useProgress();
+  const { authUser } = Route.useRouteContext();
+  const { user, signingOut, signOut } = useAuth(authUser);
+  const { progress, loaded, record } = useProgress(user?.id ?? null);
 
   const [activeLevel, setActiveLevel] = useState<Level | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
@@ -105,15 +127,20 @@ function Index() {
         onToggleCollapse={handleToggleDesktopSidebar}
         isMobileOpen={isMobileNavOpen}
         onCloseMobile={() => setIsMobileNavOpen(false)}
+        user={user}
+        signInHref={signInUrl(publicAppPath("/"))}
+        onSignOut={signOut}
+        signingOut={signingOut}
       />
 
       {/* Main Content Area — soft overflow so short/landscape windows can scroll */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Mobile Top Navigation Bar */}
-        <div className="lg:hidden sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-border bg-card/90 backdrop-blur-md px-3 py-3 sm:px-4">
+        {/* Compact mobile bar: the sidebar footer (folded into the drawer) carries
+            Home + account controls, so this only needs the drawer trigger. */}
+        <div className="sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-border bg-card/90 px-3 py-2.5 backdrop-blur-md sm:px-4 lg:hidden">
           <button
             onClick={() => setIsMobileNavOpen(true)}
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-secondary transition-colors sm:px-3.5"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-secondary"
           >
             <Menu className="size-4.5 text-primary" />
             <span className="km">កម្រិតសិក្សា</span>
@@ -126,29 +153,6 @@ function Index() {
             <Keyboard className="size-5 shrink-0 text-primary" />
             <span className="truncate">Khmer Type Master</span>
           </button>
-
-          <div className="flex shrink-0 items-center gap-1.5">
-            <a
-              href={krumathPricingUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              aria-label="បរិច្ចាគ"
-              title="បរិច្ចាគ"
-            >
-              <Heart className="size-4" />
-            </a>
-            <a
-              href={GITHUB_REPO_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              aria-label="GitHub"
-              title="GitHub"
-            >
-              <Github className="size-4" />
-            </a>
-          </div>
         </div>
 
         {/* View Switcher: Practice Screen or Learning Path Overview */}

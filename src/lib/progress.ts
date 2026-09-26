@@ -1,33 +1,17 @@
 /**
- * Lesson progress, stored locally per browser.
+ * Lesson progress.
  *
- * ---------------------------------------------------------------------------
- * FUTURE (KruMath Supabase sync) — not implemented yet
- * ---------------------------------------------------------------------------
- * When a playable (non-anonymous) Supabase user is signed in via shared
- * `.krumath.com` cookies, persist progress to the same Supabase project as
- * KruMath so progress follows the account across devices.
+ * Local `localStorage` is the source of truth for anonymous/offline play; when a
+ * playable (non-anonymous) KruMath Supabase user is signed in, progress is
+ * merged with and synced to the shared KruMath database (spec section 15).
  *
- * Suggested shape (table name TBD, e.g. `khmer_typing_progress`):
- *   - user_id (uuid, PK / FK to auth.users)
- *   - progress jsonb  — same ProgressMap shape as below
- *   - updated_at timestamptz
- *
- * Merge strategy when loading:
- *   - completed: union (true if either side completed)
- *   - bestWpm / bestAccuracy: max of local vs remote per lesson key
- *
- * Wire-up sketch:
- *   1. On mount (client): if playable user → fetch remote → merge into local → write both
- *   2. On `record()`: write localStorage, then call syncProgressToSupabase (debounced)
- *   3. Gate cloud sync with `requireSignedInForAction` only if you add an explicit
- *      "Save to account" control; silent sync can use getBrowserUser() without redirect
- *
- * Do not implement the table/RLS here until product is ready.
- * ---------------------------------------------------------------------------
+ * Cloud operations live behind `khmer_typing_progress` + RLS, scoped to
+ * `auth.uid()` and rejecting anonymous JWTs. See
+ * `supabase/migrations/0001_khmer_typing_progress.sql`.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createClientOnlyFn } from "@tanstack/react-start";
 
 export type LessonRecord = {
   completed: boolean;
@@ -38,6 +22,8 @@ export type LessonRecord = {
 export type ProgressMap = Record<string, LessonRecord>;
 
 const STORAGE_KEY = "krumath-khmer-typing-progress-v1";
+const TABLE = "khmer_typing_progress";
+const SYNC_DEBOUNCE_MS = 800;
 
 export function lessonKey(levelId: number, lessonId: string): string {
   return `${levelId}:${lessonId}`;
@@ -62,46 +48,115 @@ function write(map: ProgressMap) {
 }
 
 /**
- * Placeholder for future cloud sync. No-op today.
- * When ready: upsert ProgressMap for the signed-in KruMath Supabase user.
+ * Merge local and remote progress. `completed` is a union; best scores keep the
+ * higher value per lesson.
  */
-export async function syncProgressToSupabase(
-  _userId: string,
-  _progress: ProgressMap,
-): Promise<void> {
-  // TODO(krumath-sync): implement Supabase upsert when cloud progress ships.
-  void _userId;
-  void _progress;
+export function mergeProgress(local: ProgressMap, remote: ProgressMap): ProgressMap {
+  const merged: ProgressMap = { ...local };
+
+  for (const [key, remoteRecord] of Object.entries(remote)) {
+    const localRecord = merged[key];
+    merged[key] = localRecord
+      ? {
+          completed: localRecord.completed || remoteRecord.completed,
+          bestWpm: Math.max(localRecord.bestWpm, remoteRecord.bestWpm),
+          bestAccuracy: Math.max(localRecord.bestAccuracy, remoteRecord.bestAccuracy),
+        }
+      : remoteRecord;
+  }
+
+  return merged;
 }
 
 /**
- * Placeholder for future cloud load. Returns null today (use localStorage only).
+ * `.client` modules are import-protected in the server environment, so the
+ * browser-client calls are wrapped in `createClientOnlyFn` (the pattern the
+ * TanStack Start plugin recognises). Public helpers below are additionally
+ * guarded by `typeof window` so they are safe no-ops during SSR.
  */
-export async function loadProgressFromSupabase(_userId: string): Promise<ProgressMap | null> {
-  // TODO(krumath-sync): fetch remote progress when cloud progress ships.
-  void _userId;
-  return null;
+const fetchRemoteProgress = createClientOnlyFn(
+  async (userId: string): Promise<ProgressMap | null> => {
+    try {
+      const { getSupabaseBrowserClient } = await import("@/lib/supabase.client");
+      const { data, error } = await getSupabaseBrowserClient()
+        .from(TABLE)
+        .select("progress")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (error || !data) return null;
+      const row = data as { progress: ProgressMap | null };
+      return row.progress ?? null;
+    } catch {
+      return null;
+    }
+  },
+);
+
+const pushRemoteProgress = createClientOnlyFn(
+  async (userId: string, progress: ProgressMap): Promise<void> => {
+    try {
+      const { getSupabaseBrowserClient } = await import("@/lib/supabase.client");
+      await getSupabaseBrowserClient()
+        .from(TABLE)
+        .upsert(
+          { user_id: userId, progress, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" },
+        );
+    } catch {
+      /* cloud sync is best-effort — never block practice */
+    }
+  },
+);
+
+/** Load the signed-in user's progress, or null when unavailable. */
+export async function loadProgressFromSupabase(userId: string): Promise<ProgressMap | null> {
+  if (typeof window === "undefined" || !userId) return null;
+  return fetchRemoteProgress(userId);
 }
 
-export function useProgress() {
+/** Upsert the signed-in user's progress. Best-effort; local storage stays authoritative. */
+export async function syncProgressToSupabase(
+  userId: string,
+  progress: ProgressMap,
+): Promise<void> {
+  if (typeof window === "undefined" || !userId) return;
+  await pushRemoteProgress(userId, progress);
+}
+
+export function useProgress(userId: string | null) {
   const [progress, setProgress] = useState<ProgressMap>({});
   const [loaded, setLoaded] = useState(false);
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Load local progress, then merge any cloud progress for the signed-in user.
   useEffect(() => {
-    setProgress(read());
+    let cancelled = false;
+    const local = read();
+    setProgress(local);
     setLoaded(true);
 
-    // TODO(krumath-sync): if playable KruMath user is signed in, load remote
-    // progress, merge with local (max WPM/accuracy, union completed), write both.
-    // Example:
-    //   const user = await getBrowserUser();
-    //   if (isPlayableUser(user)) {
-    //     const remote = await loadProgressFromSupabase(user.id);
-    //     const merged = mergeProgress(read(), remote ?? {});
-    //     write(merged);
-    //     setProgress(merged);
-    //     await syncProgressToSupabase(user.id, merged);
-    //   }
+    if (!userId) return;
+
+    void (async () => {
+      const remote = await loadProgressFromSupabase(userId);
+      if (cancelled || !remote) return;
+      const merged = mergeProgress(local, remote);
+      write(merged);
+      setProgress(merged);
+      await syncProgressToSupabase(userId, merged);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Flush any pending debounced sync on unmount.
+  useEffect(() => {
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
   }, []);
 
   const record = useCallback(
@@ -118,12 +173,18 @@ export function useProgress() {
           },
         };
         write(next);
-        // TODO(krumath-sync): if playable user signed in, debounce
-        // syncProgressToSupabase(user.id, next) so cloud stays up to date.
+
+        if (userId) {
+          if (syncTimer.current) clearTimeout(syncTimer.current);
+          syncTimer.current = setTimeout(() => {
+            void syncProgressToSupabase(userId, next);
+          }, SYNC_DEBOUNCE_MS);
+        }
+
         return next;
       });
     },
-    [],
+    [userId],
   );
 
   return { progress, loaded, record };

@@ -1,8 +1,8 @@
 # Integrate a Separate App Repo with krumath.com
 
 > **This repo (Khmer Type Master)**  
-> Slug: `/khmer-typing-master` · Worker: `khmer-typing-master` · Gate: **soft** (practice free)  
-> Concrete deploy steps: [`DEPLOY.md`](DEPLOY.md)
+> Slug: `/khmer-typing-master` · Worker: `khmer-typing-master` · Gate: **hard** (KruMath sign-in required)  
+> Concrete deploy steps: [`DEPLOY.md`](DEPLOY.md) · Handoff: [`HANDOFF.md`](HANDOFF.md)
 
 Use this document when shipping a **new feature or game in its own repository** and mounting it under **krumath.com** (same pattern as Quick Brain Racer and Poster Studio).
 
