@@ -14,7 +14,7 @@ function renderMenu(props: ComponentProps<typeof AccountMenu>) {
   );
 }
 
-const signedIn = { id: "user-1", email: "kru@krumath.com" };
+const signedIn = { id: "user-1", email: "kru@krumath.com", name: "Kru Sok" };
 
 afterEach(cleanup);
 
@@ -37,7 +37,7 @@ describe("AccountMenu (sidebar)", () => {
     // Menu is closed until the account row is activated.
     expect(screen.queryByRole("menu")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /kru@krumath\.com/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Kru Sok/ }));
 
     expect(screen.getByRole("menu")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /log out/i })).toBeTruthy();
@@ -48,10 +48,36 @@ describe("AccountMenu (sidebar)", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("labels the control with the display name, not the email", () => {
+    renderMenu({ user: signedIn, signInHref: "/sign-in", onSignOut: vi.fn() });
+
+    const button = screen.getByRole("button", { name: /Kru Sok/ });
+    expect(button.textContent).toContain("Kru Sok");
+    expect(button.textContent).not.toContain("kru@krumath.com");
+  });
+
+  it("still surfaces the email inside the open menu", () => {
+    renderMenu({ user: signedIn, signInHref: "/sign-in", onSignOut: vi.fn() });
+
+    fireEvent.click(screen.getByRole("button", { name: /Kru Sok/ }));
+
+    expect(screen.getByRole("menu").textContent).toContain("kru@krumath.com");
+  });
+
+  it("falls back to the email when no display name is available", () => {
+    renderMenu({
+      user: { id: "user-1", email: "kru@krumath.com", name: null },
+      signInHref: "/sign-in",
+      onSignOut: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: /kru@krumath\.com/ })).toBeTruthy();
+  });
+
   it("closes the menu when the escape key is pressed", () => {
     renderMenu({ user: signedIn, signInHref: "/sign-in", onSignOut: vi.fn() });
 
-    fireEvent.click(screen.getByRole("button", { name: /kru@krumath\.com/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Kru Sok/ }));
     expect(screen.getByRole("menu")).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });

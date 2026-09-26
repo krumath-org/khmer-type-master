@@ -60,8 +60,9 @@ export function AccountMenu({
     };
   }, [open]);
 
-  const email = user?.email ?? "KruMath account";
-  const initial = (user?.email?.trim()?.[0] ?? "K").toUpperCase();
+  // Prefer the resolved display name; fall back to the email, then a generic label.
+  const displayName = user?.name ?? user?.email ?? "KruMath account";
+  const initial = (displayName.trim()[0] ?? "K").toUpperCase();
 
   // --- Signed out ---------------------------------------------------------
   if (!user) {
@@ -127,7 +128,9 @@ export function AccountMenu({
           {initial}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-semibold text-foreground">{email}</span>
+          <span className="block truncate text-xs font-semibold text-foreground">
+            {displayName}
+          </span>
           <span className="block text-[0.7rem] leading-snug text-muted-foreground">
             Signed in to KruMath
           </span>
@@ -147,8 +150,14 @@ export function AccountMenu({
           className="absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-full min-w-[13rem] overflow-hidden rounded-xl border border-border bg-card shadow-xl"
         >
           <div className="border-b border-border/80 px-3.5 py-2.5">
-            <p className="truncate text-sm font-semibold text-foreground">{email}</p>
-            <p className="km mt-0.5 text-xs leading-snug text-muted-foreground">គណនី KruMath</p>
+            <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
+            {user.email ? (
+              <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
+                {user.email}
+              </p>
+            ) : (
+              <p className="km mt-0.5 text-xs leading-snug text-muted-foreground">គណនី KruMath</p>
+            )}
           </div>
           <button
             type="button"

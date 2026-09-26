@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { User } from "@supabase/supabase-js";
 
-import { isPlayableUser, shouldBlock, toAuthUser } from "@/lib/authUser";
+import { isPlayableUser, resolveDisplayName, shouldBlock, toAuthUser } from "@/lib/authUser";
 import {
   clearKrumathSessionMarker,
   getKrumathCookieDomain,
@@ -14,11 +14,18 @@ import {
   stripTransientQueryParams,
 } from "@/lib/krumathUrls";
 
-function makeUser(overrides: { is_anonymous?: boolean; email?: string | null } = {}): User {
+function makeUser(
+  overrides: {
+    is_anonymous?: boolean;
+    email?: string | null;
+    user_metadata?: Record<string, unknown> | null;
+  } = {},
+): User {
   return {
     id: "user-1",
     email: "kru@krumath.com",
     is_anonymous: false,
+    user_metadata: {},
     ...overrides,
   } as User;
 }
@@ -44,7 +51,11 @@ describe("auth gate rule (spec section 7)", () => {
 
 describe("toAuthUser", () => {
   it("maps a playable user to the serializable shape", () => {
-    expect(toAuthUser(makeUser())).toEqual({ id: "user-1", email: "kru@krumath.com" });
+    expect(toAuthUser(makeUser())).toEqual({
+      id: "user-1",
+      email: "kru@krumath.com",
+      name: "kru",
+    });
   });
 
   it("returns null for no session or anonymous sessions", () => {
@@ -53,7 +64,41 @@ describe("toAuthUser", () => {
   });
 
   it("coerces a missing email to null", () => {
-    expect(toAuthUser(makeUser({ email: null }))).toEqual({ id: "user-1", email: null });
+    expect(toAuthUser(makeUser({ email: null }))).toEqual({
+      id: "user-1",
+      email: null,
+      name: null,
+    });
+  });
+});
+
+describe("resolveDisplayName", () => {
+  it("prefers the profile name over everything else", () => {
+    const user = makeUser({
+      email: "kru@krumath.com",
+      user_metadata: { name: "Kru Sok", full_name: "Sok Kru" },
+    });
+    expect(resolveDisplayName(user)).toBe("Kru Sok");
+  });
+
+  it("falls back to full_name when name is absent", () => {
+    const user = makeUser({ user_metadata: { full_name: "Sok Kru" } });
+    expect(resolveDisplayName(user)).toBe("Sok Kru");
+  });
+
+  it("ignores blank metadata values", () => {
+    const user = makeUser({ user_metadata: { name: "   ", full_name: "Sok Kru" } });
+    expect(resolveDisplayName(user)).toBe("Sok Kru");
+  });
+
+  it("falls back to the email local part", () => {
+    expect(resolveDisplayName(makeUser({ user_metadata: {} }))).toBe("kru");
+    expect(resolveDisplayName(makeUser({ user_metadata: null }))).toBe("kru");
+  });
+
+  it("returns null when there is neither a name nor an email", () => {
+    expect(resolveDisplayName(makeUser({ email: null }))).toBeNull();
+    expect(resolveDisplayName(null)).toBeNull();
   });
 });
 
