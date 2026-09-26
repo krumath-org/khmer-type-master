@@ -30,8 +30,9 @@ Any required KruMath main-app changes:
   3. Apply the migration above to the shared Supabase project
 Cloudflare route: krumath.com/khmer-typing-master*  →  khmer-typing-master
 Verification status: Cloudflare route, live sign-in redirect, asset delivery, database
-  migration and RLS verified in production. The signed-in round trip needs an operator
-  pass with a real KruMath session (see matrix below)
+  migration, RLS, the signed-in round trip and cloud progress sync are all verified in
+  production (see matrix below). Logout and cross-device read-back still need an
+  operator pass.
 Known limitations:
   - Cloud sync is best-effort and debounced; localStorage remains the source of truth
   - DEV skips the auth gate so localhost works without a KruMath session
@@ -91,7 +92,7 @@ logout (spec section 11).
 Status uses: `[x]` verified · `[~]` implemented, needs a signed-in operator pass · `[ ]` operator/maintainer action.
 
 ### Access
-- [~] Logged-in user can open the project
+- [x] Logged-in user can open the project
 - [x] Logged-out user is handled correctly (307 → `/sign-in?returnUrl=…`)
 - [x] Anonymous user is handled correctly (rejected by RLS guard, verified in SQL)
 - [ ] Expired session is handled correctly
@@ -107,7 +108,11 @@ Status uses: `[x]` verified · `[~]` implemented, needs a signed-in operator pas
 ### Session
 - [~] Refresh preserves login
 - [~] Session refresh works
-- [~] Shared Supabase session works
+- [x] Shared Supabase session works (same `localStorage` key as `krumath.com/home`)
+- [x] Progress syncs to `public.khmer_typing_progress` — verified live: a row was written
+  for a real non-anonymous user (`is_anonymous = false`) after a completed lesson
+- [x] Local progress merges into the cloud copy on load (accumulated local lessons were
+  pushed up in a single write)
 - [~] No stale authenticated state remains (logout redirects to sign-in)
 
 ### Logout
