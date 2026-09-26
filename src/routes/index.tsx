@@ -12,9 +12,12 @@ import { publicAppHref, publicAppPath, signInUrl } from "@/lib/krumathUrls";
 
 export const Route = createFileRoute("/")({
   /**
-   * Hard gate (spec sections 7-9): reject missing and anonymous sessions before
-   * rendering. DEV skips the gate so localhost works without shared
-   * `.krumath.com` cookies; production behavior is unaffected.
+   * Hard gate (spec sections 7-9): reject requests with no shared KruMath
+   * session marker before rendering. This only asserts presence — the real
+   * session lives in `localStorage`, which SSR cannot read — so the
+   * authoritative playable-user check runs client-side in `useAuth` below.
+   *
+   * DEV skips the gate so localhost works without a KruMath session.
    */
   beforeLoad: async ({ location }) => {
     if (import.meta.env.DEV) {
@@ -34,8 +37,17 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { authUser } = Route.useRouteContext();
-  const { user, signingOut, signOut } = useAuth(authUser);
+  const { user, checking, signingOut, signOut } = useAuth(authUser);
   const { progress, loaded, record } = useProgress(user?.id ?? null);
+
+  // Authoritative gate (spec sections 7-8). The server can only see KruMath's
+  // presence marker, so the real shared session is verified here — and we wait
+  // for `checking` to settle before deciding the user is signed out.
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    if (checking || user) return;
+    window.location.assign(signInUrl(publicAppHref("/", window.location.search)));
+  }, [checking, user]);
 
   const [activeLevel, setActiveLevel] = useState<Level | null>(null);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);

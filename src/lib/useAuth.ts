@@ -3,12 +3,18 @@ import { createClientOnlyFn } from "@tanstack/react-start";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
 import { toAuthUser, type AuthUser } from "@/lib/authUser";
+import { clearKrumathSessionMarker } from "@/lib/krumathCookies";
 import { publicAppPath, signInUrl } from "@/lib/krumathUrls";
 
 export type { AuthUser };
 
 export type UseAuthResult = {
   user: AuthUser | null;
+  /**
+   * True until the browser has verified the shared session. The caller must not
+   * treat `user === null` as "signed out" while this is still true.
+   */
+  checking: boolean;
   signingOut: boolean;
   signOut: () => Promise<void>;
 };
@@ -40,18 +46,27 @@ const subscribeToAuthChanges = createClientOnlyFn(
 const signOutSharedSession = createClientOnlyFn(async (): Promise<void> => {
   const { getSupabaseBrowserClient } = await import("@/lib/supabase.client");
   await getSupabaseBrowserClient().auth.signOut();
+  // The server gate can only see KruMath's presence marker, so clear it here
+  // too — otherwise KruMath's middleware would still consider us signed in
+  // (spec section 11, logout synchronization).
+  document.cookie = clearKrumathSessionMarker(window.location.hostname);
 });
 
 /**
- * Client-side auth state for the account menu.
+ * Client-side auth state for the account menu and the hard gate.
  *
- * Seeded with the server-resolved user so there is no signed-out flash, then
- * kept in sync via `onAuthStateChange` (shared `.krumath.com` cookies).
- * Signing out calls the shared Supabase `signOut()`, which also signs the user
- * out of KruMath (spec section 11), then leaves the hard-gated app.
+ * This is the AUTHORITATIVE check. KruMath stores its Supabase session in
+ * `localStorage`, which the server cannot read, so `beforeLoad` can only assert
+ * that a session marker exists; here we read the real session (same origin,
+ * same `sb-<ref>-auth-token` key) and expose `checking` so the caller can wait
+ * before redirecting.
+ *
+ * Signing out calls the shared Supabase `signOut()`, which clears the session
+ * the main app reads, then the KruMath presence marker.
  */
 export function useAuth(initialUser: AuthUser | null): UseAuthResult {
   const [user, setUser] = useState<AuthUser | null>(initialUser);
+  const [checking, setChecking] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -61,14 +76,17 @@ export function useAuth(initialUser: AuthUser | null): UseAuthResult {
     void (async () => {
       try {
         const current = await readCurrentUser();
-        if (!cancelled) setUser(current);
+        if (cancelled) return;
+        setUser(current);
 
         unsubscribe = await subscribeToAuthChanges((next) => {
           if (!cancelled) setUser(next);
         });
       } catch {
-        // Missing config or a transient auth error: keep the server-resolved user
-        // so the account menu still renders and logout remains available.
+        // Missing config or a transient auth error. Leave `user` as-is; the
+        // caller decides whether to gate on the unresolved state.
+      } finally {
+        if (!cancelled) setChecking(false);
       }
     })();
 
@@ -90,5 +108,5 @@ export function useAuth(initialUser: AuthUser | null): UseAuthResult {
     }
   }, []);
 
-  return { user, signingOut, signOut };
+  return { user, checking, signingOut, signOut };
 }

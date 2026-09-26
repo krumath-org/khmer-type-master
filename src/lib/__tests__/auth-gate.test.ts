@@ -3,11 +3,16 @@ import type { User } from "@supabase/supabase-js";
 
 import { isPlayableUser, shouldBlock, toAuthUser } from "@/lib/authUser";
 import {
+  clearKrumathSessionMarker,
   getKrumathCookieDomain,
-  getKrumathSupabaseCookieOptions,
-  mergeKrumathCookieOptions,
+  KRUMATH_SESSION_MARKER_COOKIE,
 } from "@/lib/krumathCookies";
-import { publicAppHref, publicAppPath, signInUrl } from "@/lib/krumathUrls";
+import {
+  publicAppHref,
+  publicAppPath,
+  signInUrl,
+  stripTransientQueryParams,
+} from "@/lib/krumathUrls";
 
 function makeUser(overrides: { is_anonymous?: boolean; email?: string | null } = {}): User {
   return {
@@ -52,8 +57,12 @@ describe("toAuthUser", () => {
   });
 });
 
-describe("shared session cookies (spec section 10)", () => {
-  it("shares cookies on krumath.com and its subdomains", () => {
+describe("shared session contract (spec section 10)", () => {
+  it("mirrors KruMath's marker cookie name", () => {
+    expect(KRUMATH_SESSION_MARKER_COOKIE).toBe("km_session");
+  });
+
+  it("shares the cookie domain on krumath.com and its subdomains", () => {
     expect(getKrumathCookieDomain("krumath.com")).toBe(".krumath.com");
     expect(getKrumathCookieDomain("app.krumath.com")).toBe(".krumath.com");
   });
@@ -64,23 +73,13 @@ describe("shared session cookies (spec section 10)", () => {
     expect(getKrumathCookieDomain(undefined)).toBeUndefined();
   });
 
-  it("uses root path, lax and secure on production hosts", () => {
-    expect(getKrumathSupabaseCookieOptions("krumath.com", true)).toEqual({
-      domain: ".krumath.com",
-      path: "/",
-      sameSite: "lax",
-      secure: true,
-    });
-  });
-
-  it("omits domain where sharing is not possible", () => {
-    const localOnly: { path: string; domain?: string } = { path: "/" };
-    expect(getKrumathSupabaseCookieOptions("localhost", false)).toBeUndefined();
-    expect(mergeKrumathCookieOptions(localOnly, "localhost")).toEqual({ path: "/" });
-    expect(mergeKrumathCookieOptions(localOnly, "krumath.com")).toEqual({
-      path: "/",
-      domain: ".krumath.com",
-    });
+  it("clears the marker with the same attributes KruMath uses", () => {
+    expect(clearKrumathSessionMarker("krumath.com")).toBe(
+      "km_session=; Path=/; Max-Age=0; SameSite=Lax; Domain=.krumath.com",
+    );
+    expect(clearKrumathSessionMarker("localhost")).toBe(
+      "km_session=; Path=/; Max-Age=0; SameSite=Lax",
+    );
   });
 });
 
@@ -113,5 +112,28 @@ describe("sign-in URL (spec section 9)", () => {
     expect(value.startsWith("/")).toBe(true);
     expect(value.startsWith("//")).toBe(false);
     expect(value).not.toContain("://");
+  });
+});
+
+describe("transient query params", () => {
+  it("drops Next.js Router Cache prefetch keys", () => {
+    expect(stripTransientQueryParams("?_rsc=kljkh")).toBe("");
+    expect(publicAppHref("/", "?_rsc=kljkh")).toBe(publicAppPath("/"));
+  });
+
+  it("keeps real deep-link intent while dropping transient params", () => {
+    const stripped = stripTransientQueryParams("?level=3&lesson=x&_rsc=abc");
+    expect(stripped).toContain("level=3");
+    expect(stripped).toContain("lesson=x");
+    expect(stripped).not.toContain("_rsc");
+
+    const href = publicAppHref("/", "?level=3&lesson=x&_rsc=abc");
+    expect(href).not.toContain("_rsc");
+    expect(decodeURIComponent(signInUrl(href))).toContain("level=3");
+  });
+
+  it("is a no-op when nothing is transient", () => {
+    expect(stripTransientQueryParams("")).toBe("");
+    expect(stripTransientQueryParams("?level=3")).toBe("?level=3");
   });
 });

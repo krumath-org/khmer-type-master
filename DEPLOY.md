@@ -12,19 +12,24 @@ Handoff summary for the KruMath maintainer: [`HANDOFF.md`](HANDOFF.md).
 | Vite `base` / Nitro `baseURL` | `/khmer-typing-master/` |
 | Cloudflare Worker name | `khmer-typing-master` |
 | Auth gate | **Hard** — the whole app requires a valid, non-anonymous KruMath session |
+| Session storage | Shared KruMath **localStorage** (`sb-<projectRef>-auth-token`); KruMath writes no session cookie on `krumath.com` |
 | Signed-out behavior | SSR redirect to `/sign-in?returnUrl=/khmer-typing-master[?search]` |
 | Progress | `localStorage` + merged into `public.khmer_typing_progress` (RLS) when signed in |
 | DB migration | `supabase/migrations/0001_khmer_typing_progress.sql` |
 
 Auth implementation:
 
-- `src/lib/auth.functions.ts` — server-side auth check (rejects anonymous sessions).
-- `src/routes/index.tsx` — `beforeLoad` hard gate; deep-link search is preserved in `returnUrl`.
-- `src/lib/useAuth.ts` — client auth state + shared Supabase `signOut()`.
+- `src/lib/auth.functions.ts` — server-side session **presence** check via `getAuthState`.
+- `src/lib/krumathSession.server.ts` — reads KruMath's `km_session` marker cookie during SSR.
+- `src/routes/index.tsx` — `beforeLoad` hard gate + authoritative client-side guard;
+  deep-link search is preserved in `returnUrl` (transient `_rsc` is stripped).
+- `src/lib/useAuth.ts` — resolves the real session from localStorage and exposes `checking`.
 - `src/components/AccountMenu.tsx` — Sign In (signed out) / profile + Log out (signed in).
 - `src/lib/krumathUrls.ts` — `/home`, `/pricing`, and exact `returnUrl` sign-in URLs.
 
-DEV skips the gate so `npm run dev` works without shared `.krumath.com` cookies. Production is unaffected.
+KruMath keeps the Supabase session in `localStorage`, so SSR can only assert that a
+session marker exists; the real check runs in the browser. DEV skips the gate so
+`npm run dev` works without a KruMath session.
 
 ## Deploy (operator)
 
@@ -32,6 +37,15 @@ DEV skips the gate so `npm run dev` works without shared `.krumath.com` cookies.
 cp .env.example .env   # fill VITE_SUPABASE_* from KruMath
 npm install
 npm run deploy         # build + nitro deploy --prebuilt
+```
+
+⚠️ **Vite gives process env precedence over `.env`.** If `VITE_SUPABASE_URL` or
+`VITE_SUPABASE_ANON_KEY` are set in your shell (for example the placeholder values used
+by `.github/workflows/ci.yml`), the build silently ships those instead of `.env`. Verify
+before deploying:
+
+```sh
+rg -o "https://[a-z0-9]+\.supabase\.co" .output/public | sort -u
 ```
 
 Apply the database migration to the shared KruMath Supabase project once (SQL editor or
