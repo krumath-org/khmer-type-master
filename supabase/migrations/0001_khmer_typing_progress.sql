@@ -18,10 +18,13 @@ create table if not exists public.khmer_typing_progress (
 alter table public.khmer_typing_progress enable row level security;
 
 -- True only for a real, non-anonymous KruMath account session.
+-- search_path is pinned empty to satisfy the `function_search_path_mutable`
+-- advisor; the body only calls schema-qualified auth.* helpers so it is safe.
 create or replace function public.khmer_typing_is_member()
 returns boolean
 language sql
 stable
+set search_path = ''
 as $$
   select
     auth.uid() is not null
